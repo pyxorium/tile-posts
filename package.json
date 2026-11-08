@@ -1,0 +1,15 @@
+{
+  "name": "tile-posts",
+  "version": "0.1.0",
+  "description": "Tile posts: the cafe.thunderbird.tile.* lexicons (a post sharing a web tile, shown in Raku's Tile posts), their publish script, and a script to write test posts",
+  "private": true,
+  "license": "UNLICENSED",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "publish-lexicons": "node scripts/publish-lexicons.mjs"
+  }
+}

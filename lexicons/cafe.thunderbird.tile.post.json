@@ -1,0 +1,22 @@
+{
+  "lexicon": 1,
+  "id": "cafe.thunderbird.tile.post",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "A post sharing a web tile, with optional text. Shown in Raku's Tile posts.",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["tile", "createdAt"],
+        "properties": {
+          "tile": { "type": "ref", "ref": "com.atproto.repo.strongRef", "description": "The tile (an ing.dasl.masl record) and its exact version." },
+          "text": { "type": "string", "maxGraphemes": 300, "maxLength": 3000 },
+          "alt": { "type": "string", "maxGraphemes": 1000, "maxLength": 10000, "description": "What the tile is and does, for screen readers and when only its card shows. Empty: the tile's own description." },
+          "langs": { "type": "array", "maxLength": 3, "items": { "type": "string", "format": "language" } },
+          "createdAt": { "type": "string", "format": "datetime" }
+        }
+      }
+    }
+  }
+}
