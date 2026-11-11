@@ -110,9 +110,17 @@ test('publishing: the password from $env:BSKY_APP_PASSWORD, one record keyed by 
   assert.deepEqual(r3.due, ['cafe.thunderbird.tile.post']);
 });
 
-test("with today's published.json (the post, Nov 8), only the heart is published", async () => {
-  const today = JSON.parse(readFileSync(PUBLISHED_FILE, 'utf8'));
-  const r = await runPublish({ fetchImpl: server().fetchImpl, log: quiet, dryRun: true, env: {}, readPublished: () => today, ask: quiet, askHidden: quiet });
+test('the committed published.json matches the lexicons on disk: nothing due (publish, then commit the record)', async () => {
+  const committed = JSON.parse(readFileSync(PUBLISHED_FILE, 'utf8'));
+  const r = await runPublish({ fetchImpl: server().fetchImpl, log: quiet, dryRun: true, env: {}, readPublished: () => committed, ask: quiet, askHidden: quiet });
+  assert.deepEqual(r.due, [], 'a lexicon changed or was added since it was last published: publish it, then commit published.json');
+});
+
+test('a published.json from before hearts (the post only): only the heart is published', async () => {
+  const committed = JSON.parse(readFileSync(PUBLISHED_FILE, 'utf8'));
+  const before = structuredClone(committed);
+  delete before.lexicons['cafe.thunderbird.tile.like'];
+  const r = await runPublish({ fetchImpl: server().fetchImpl, log: quiet, dryRun: true, env: {}, readPublished: () => before, ask: quiet, askHidden: quiet });
   assert.deepEqual(r.due, ['cafe.thunderbird.tile.like']);
 });
 
