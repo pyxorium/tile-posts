@@ -1,14 +1,17 @@
 // The lexicon and its publish script (claude/tile-posts-plan.md, stage 1), against a stand-in account server.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { runPublish, readLexicons, ACCOUNT, SCHEMA } from '../scripts/publish-lexicons.mjs';
+import { readFileSync } from 'node:fs';
+import { runPublish, readLexicons, ACCOUNT, SCHEMA, PUBLISHED_FILE } from '../scripts/publish-lexicons.mjs';
 
 const PDS = 'https://fibercap.us-west.host.bsky.network';
 
+test('the lexicons: cafe.thunderbird.tile.like and .post, nothing else', () => {
+  assert.deepEqual(readLexicons().map((l) => l.id), ['cafe.thunderbird.tile.like', 'cafe.thunderbird.tile.post']);
+});
+
 test('the lexicon: cafe.thunderbird.tile.post as the plan has it', () => {
-  const [l, ...more] = readLexicons();
-  assert.equal(more.length, 0);
-  assert.equal(l.id, 'cafe.thunderbird.tile.post');
+  const l = readLexicons().find((x) => x.id === 'cafe.thunderbird.tile.post');
   const m = l.defs.main;
   assert.equal(m.type, 'record');
   assert.equal(m.key, 'tid');
@@ -20,6 +23,20 @@ test('the lexicon: cafe.thunderbird.tile.post as the plan has it', () => {
   assert.deepEqual([p.langs.maxLength, p.langs.items.format], [3, 'language']);
   assert.equal(p.createdAt.format, 'datetime');
   assert.deepEqual(Object.keys(p).sort(), ['alt', 'createdAt', 'langs', 'text', 'tile']);
+});
+
+// A heart (claude/raku-hearts-plan.md, HT2, HT3): Bluesky's like shape; the subject usually a tile post, possibly a tile.
+test('the lexicon: cafe.thunderbird.tile.like, a heart in Bluesky\'s like shape', () => {
+  const l = readLexicons().find((x) => x.id === 'cafe.thunderbird.tile.like');
+  const m = l.defs.main;
+  assert.equal(m.type, 'record');
+  assert.equal(m.key, 'tid');
+  assert.deepEqual(m.record.required, ['subject', 'createdAt']);
+  const p = m.record.properties;
+  assert.deepEqual(Object.keys(p).sort(), ['createdAt', 'subject']);
+  assert.deepEqual(p.subject, { type: 'ref', ref: 'com.atproto.repo.strongRef', description: p.subject.description });
+  assert.equal(p.createdAt.format, 'datetime');
+  for (const word of ['cafe.thunderbird.tile.post', 'ing.dasl.masl']) assert.ok(m.description.includes(word), word);
 });
 
 function server({ password = 'abcd-efgh-ijkl-mnop', sessionDid = ACCOUNT, mangle = false } = {}) {
@@ -57,7 +74,7 @@ test('a dry run shows what would be published and writes nothing', async () => {
   let wrote = false;
   const r = await runPublish({ fetchImpl: s.fetchImpl, log: quiet, dryRun: true, env: {}, readPublished: () => ({}), writePublished: () => { wrote = true; },
     ask: () => assert.fail('no questions in a dry run'), askHidden: () => assert.fail('no password in a dry run') });
-  assert.deepEqual(r.due, ['cafe.thunderbird.tile.post']);
+  assert.deepEqual(r.due, ['cafe.thunderbird.tile.like', 'cafe.thunderbird.tile.post']);
   assert.equal(wrote, false);
   assert.ok(!s.calls.some((c) => c.method === 'POST'));
 });
@@ -69,15 +86,17 @@ test('publishing: the password from $env:BSKY_APP_PASSWORD, one record keyed by 
   const r = await runPublish({ fetchImpl: s.fetchImpl, log: (l) => lines.push(l), env: { BSKY_APP_PASSWORD: 'abcd-efgh-ijkl-mnop' }, readPublished: () => ({}),
     writePublished: (o) => { saved = o; }, ask: async () => 'y', askHidden: () => assert.fail('the password came from the environment'), now: () => '2026-11-08T12:00:00.000Z' });
   assert.equal(r.changed, true);
-  const put = s.calls.find((c) => c.path.endsWith('putRecord'));
+  const puts = s.calls.filter((c) => c.path.endsWith('putRecord'));
+  assert.deepEqual(puts.map((c) => c.body.rkey), ['cafe.thunderbird.tile.like', 'cafe.thunderbird.tile.post']);
+  const put = puts[1];
   assert.equal(put.body.collection, SCHEMA);
-  assert.equal(put.body.rkey, 'cafe.thunderbird.tile.post');
   assert.equal(put.body.repo, ACCOUNT);
   assert.equal(put.body.record.$type, SCHEMA);
   assert.equal(put.auth, 'Bearer jwt');
   const entry = saved.lexicons['cafe.thunderbird.tile.post'];
   assert.equal(entry.uri, `at://${ACCOUNT}/${SCHEMA}/cafe.thunderbird.tile.post`);
-  assert.equal(entry.text, JSON.stringify(readLexicons()[0]));
+  assert.equal(entry.text, JSON.stringify(readLexicons().find((x) => x.id === 'cafe.thunderbird.tile.post')));
+  assert.equal(saved.lexicons['cafe.thunderbird.tile.like'].uri, `at://${ACCOUNT}/${SCHEMA}/cafe.thunderbird.tile.like`);
   assert.ok(lines.some((l) => l.includes('_lexicon.tile')), 'it reminds about the TXT record');
 
   // again, unchanged: nothing to do, no password asked
@@ -86,9 +105,15 @@ test('publishing: the password from $env:BSKY_APP_PASSWORD, one record keyed by 
     ask: () => assert.fail('nothing to ask'), askHidden: () => assert.fail('nothing to ask') });
   assert.equal(r2.changed, false);
   // a changed text is published again
-  const old = { lexicons: { 'cafe.thunderbird.tile.post': { ...entry, text: '{"old":1}' } } };
+  const old = { lexicons: { ...saved.lexicons, 'cafe.thunderbird.tile.post': { ...entry, text: '{"old":1}' } } };
   const r3 = await runPublish({ fetchImpl: server().fetchImpl, log: quiet, dryRun: true, env: {}, readPublished: () => old, ask: quiet, askHidden: quiet });
   assert.deepEqual(r3.due, ['cafe.thunderbird.tile.post']);
+});
+
+test("with today's published.json (the post, Nov 8), only the heart is published", async () => {
+  const today = JSON.parse(readFileSync(PUBLISHED_FILE, 'utf8'));
+  const r = await runPublish({ fetchImpl: server().fetchImpl, log: quiet, dryRun: true, env: {}, readPublished: () => today, ask: quiet, askHidden: quiet });
+  assert.deepEqual(r.due, ['cafe.thunderbird.tile.like']);
 });
 
 test('the password asked for (hidden) when the environment has none; "no" stops before writing', async () => {

@@ -9,6 +9,12 @@
       "cid": "bafyreibuo4kxrapgx7wnju63luttrc2mvybr3gumb27i6tbyfr47xl6zoa",
       "text": "{\"lexicon\":1,\"id\":\"cafe.thunderbird.tile.post\",\"defs\":{\"main\":{\"type\":\"record\",\"description\":\"A post sharing a web tile, with optional text. Shown in Raku's Tile posts.\",\"key\":\"tid\",\"record\":{\"type\":\"object\",\"required\":[\"tile\",\"createdAt\"],\"properties\":{\"tile\":{\"type\":\"ref\",\"ref\":\"com.atproto.repo.strongRef\",\"description\":\"The tile (an ing.dasl.masl record) and its exact version.\"},\"text\":{\"type\":\"string\",\"maxGraphemes\":300,\"maxLength\":3000},\"alt\":{\"type\":\"string\",\"maxGraphemes\":1000,\"maxLength\":10000,\"description\":\"What the tile is and does, for screen readers and when only its card shows. Empty: the tile's own description.\"},\"langs\":{\"type\":\"array\",\"maxLength\":3,\"items\":{\"type\":\"string\",\"format\":\"language\"}},\"createdAt\":{\"type\":\"string\",\"format\":\"datetime\"}}}}}}",
       "publishedAt": "2026-11-08T15:41:24.089Z"
+    },
+    "cafe.thunderbird.tile.like": {
+      "uri": "at://did:plc:6vxjigxrqizmbo56gojxico3/com.atproto.lexicon.schema/cafe.thunderbird.tile.like",
+      "cid": "bafyreic3dimqiy5hpmwwwesm7dws6drh2nmvjiiqgrdkc6uqpnhgfcw2ei",
+      "text": "{\"lexicon\":1,\"id\":\"cafe.thunderbird.tile.like\",\"defs\":{\"main\":{\"type\":\"record\",\"description\":\"A heart: liking something in the tile family. Shown as hearts in Raku. Usually on a tile post (cafe.thunderbird.tile.post); possibly on a tile (ing.dasl.masl). Readers ignore subjects they don't show. Deleting the record takes the heart back.\",\"key\":\"tid\",\"record\":{\"type\":\"object\",\"required\":[\"subject\",\"createdAt\"],\"properties\":{\"subject\":{\"type\":\"ref\",\"ref\":\"com.atproto.repo.strongRef\",\"description\":\"What is hearted (usually a cafe.thunderbird.tile.post record) and its exact version.\"},\"createdAt\":{\"type\":\"string\",\"format\":\"datetime\"}}}}}}",
+      "publishedAt": "2026-11-11T17:40:54.612Z"
     }
   }
 }

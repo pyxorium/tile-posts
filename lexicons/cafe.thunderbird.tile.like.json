@@ -1,0 +1,19 @@
+{
+  "lexicon": 1,
+  "id": "cafe.thunderbird.tile.like",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "A heart: liking something in the tile family. Shown as hearts in Raku. Usually on a tile post (cafe.thunderbird.tile.post); possibly on a tile (ing.dasl.masl). Readers ignore subjects they don't show. Deleting the record takes the heart back.",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["subject", "createdAt"],
+        "properties": {
+          "subject": { "type": "ref", "ref": "com.atproto.repo.strongRef", "description": "What is hearted (usually a cafe.thunderbird.tile.post record) and its exact version." },
+          "createdAt": { "type": "string", "format": "datetime" }
+        }
+      }
+    }
+  }
+}

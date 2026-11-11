@@ -36,8 +36,31 @@ An example:
 }
 ```
 
-Anyone can write one, with any tool. Later pieces of the family (likes, comments, follows, and a permission set
-covering them) will join under the same `cafe.thunderbird.tile.` prefix; new fields on a post will all be optional.
+Anyone can write one, with any tool. Later pieces of the family (comments, follows) will join under the same
+`cafe.thunderbird.tile.` prefix; new fields on a post will all be optional. Raku's sign-in permission ("Raku",
+`cafe.thunderbird.authRaku`, in the Raku repo) covers writing posts and hearts.
+
+## The record: `cafe.thunderbird.tile.like` (a heart)
+
+`lexicons/cafe.thunderbird.tile.like.json` (Nov 2026). Shaped like Bluesky's `app.bsky.feed.like`, in the hearting
+account's own repo; record keys are TIDs. Raku shows them as hearts on tile posts and counts distinct accounts.
+Deleting the record takes the heart back.
+
+| Field | | |
+|---|---|---|
+| `subject` | required | what is hearted, as a strongRef (`uri`, `cid`): usually a `cafe.thunderbird.tile.post`; possibly a tile (`ing.dasl.masl`) later. Readers ignore subjects they don't show |
+| `createdAt` | required | when it was given |
+
+```json
+{
+  "$type": "cafe.thunderbird.tile.like",
+  "subject": {
+    "uri": "at://did:plc:6vxjigxrqizmbo56gojxico3/cafe.thunderbird.tile.post/3m…",
+    "cid": "bafyrei…"
+  },
+  "createdAt": "2026-11-11T16:00:00.000Z"
+}
+```
 
 ## Publishing the lexicons
 
@@ -80,7 +103,7 @@ npm test
 python -m unittest discover -s test -v
 ```
 
-`npm test` checks the lexicon and the publish script against a stand-in account server; the Python tests run
+`npm test` checks the lexicons and the publish script against a stand-in account server; the Python tests run
 `tile_post.py` against stand-in servers on this computer (127.0.0.1).
 
 ## Files
