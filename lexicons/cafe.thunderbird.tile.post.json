@@ -4,15 +4,16 @@
   "defs": {
     "main": {
       "type": "record",
-      "description": "A post sharing a web tile, with optional text. Shown in Raku's Tile posts.",
+      "description": "A post sharing a web tile, with optional text. Shown in Raku's Tile posts. With record, a post about a record that isn't a tile (a song, a place, a signpost), shown by the renderer tile named in tile.",
       "key": "tid",
       "record": {
         "type": "object",
         "required": ["tile", "createdAt"],
         "properties": {
-          "tile": { "type": "ref", "ref": "com.atproto.repo.strongRef", "description": "The tile (an ing.dasl.masl record) and its exact version." },
+          "tile": { "type": "ref", "ref": "com.atproto.repo.strongRef", "description": "The tile (an ing.dasl.masl record) and its exact version. With record: the renderer tile that shows it, as it was when posted." },
+          "record": { "type": "ref", "ref": "com.atproto.repo.strongRef", "description": "Optional: the record this post is about, when it isn't a tile itself (e.g. a song, cafe.thunderbird.audio.track or fm.plyr.track, shown by Tracks), and its exact version. Readers that don't know it show the tile in tile." },
           "text": { "type": "string", "maxGraphemes": 300, "maxLength": 3000 },
-          "alt": { "type": "string", "maxGraphemes": 1000, "maxLength": 10000, "description": "What the tile is and does, for screen readers and when only its card shows. Empty: the tile's own description." },
+          "alt": { "type": "string", "maxGraphemes": 1000, "maxLength": 10000, "description": "What the tile (or the record) is and does, for screen readers and when only its card shows. Empty: the tile's own description, or a line made from the record." },
           "langs": { "type": "array", "maxLength": 3, "items": { "type": "string", "format": "language" } },
           "createdAt": { "type": "string", "format": "datetime" }
         }

@@ -4,6 +4,7 @@ claude/tile-posts-plan.md, stage 2. Standard library only: nothing to install. R
 C:\\thunderbird-cafe\\tile-posts:
 
     python scripts/tile_post.py post --tile at://... --text "..." [--alt "..."] [--lang en] [--dry-run]
+    python scripts/tile_post.py post --song at://... --text "..." [--dry-run]
     python scripts/tile_post.py list
     python scripts/tile_post.py delete --rkey ... [--dry-run]
 
@@ -15,12 +16,19 @@ Writing and deleting need an app password, taken from $env:BSKY_APP_PASSWORD (on
 
 Listing and dry runs need none. A post names its tile by address and exact version (a strongRef: the tile record's
 CID, read from the tile's own server), so Raku shows the tile as it was when posted. The tile can be anyone's.
+
+A song post (--song; claude/mixtape-3c-track-renderer-notes.md, R3c-11 and PB2): the song's record (a
+cafe.thunderbird.audio.track, or an fm.plyr.track whose audio is on its account's own server) goes in the post's
+`record`, and its renderer tile, Tracks, in `tile`. Tracks' address comes from C:\thunderbird-cafe\renderer-tiles\
+published.json ("track-renderer") when that folder sits beside this one, its exact version read from its own server;
+--renderer at://... names it instead.
 """
 import argparse
 import json
 import os
 import re
 import sys
+from pathlib import Path
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -28,6 +36,8 @@ from datetime import datetime, timezone
 
 COLLECTION = 'cafe.thunderbird.tile.post'
 TILE_COLLECTION = 'ing.dasl.masl'
+SONG_COLLECTIONS = ('cafe.thunderbird.audio.track', 'fm.plyr.track')    # the kinds Tracks plays
+RENDERERS_PUBLISHED = Path(__file__).resolve().parents[2] / 'renderer-tiles' / 'published.json'
 DEFAULT_HANDLE = 'thunderbird.cafe'
 HANDLE_RESOLVER = 'https://public.api.bsky.app'
 PLC_DIRECTORY = 'https://plc.directory'
@@ -128,6 +138,16 @@ def account(did):
     return {'did': did, 'handle': handle, 'pds': pds.rstrip('/')}
 
 
+def parse_record_address(text):
+    """at://<handle or DID>/<collection>/<rkey> -> (actor, collection, rkey)."""
+    m = re.match(r'^at://([^/]+)/([^/]+)/([^/?#]+)$', text.strip())
+    if not m:
+        raise Stop(f'"{text}" is not a record address (at://<account>/<kind>/<key>).')
+    if not RKEY_RE.match(m.group(3)):
+        raise Stop(f'"{m.group(3)}" is not a record key.')
+    return m.group(1), m.group(2), m.group(3)
+
+
 def parse_tile_address(text):
     """at://<handle or DID>/ing.dasl.masl/<rkey> -> (actor, rkey)."""
     m = re.match(r'^at://([^/]+)/([^/]+)/([^/?#]+)$', text.strip())
@@ -159,6 +179,45 @@ def read_tile(address):
     return {'uri': f'at://{did}/{TILE_COLLECTION}/{rkey}', 'cid': cid, 'name': name or 'Untitled tile', 'by': acct['handle']}
 
 
+def read_song(address):
+    """A song's record from its own server -> {'uri' (by DID), 'cid', 'title', 'by'}. Stops when it isn't a song Tracks
+    can play (another kind, or a plyr.fm song whose audio is only on plyr.fm's storage)."""
+    actor, collection, rkey = parse_record_address(address)
+    if collection not in SONG_COLLECTIONS:
+        raise Stop(f'{address} is a {collection} record, not a song ({" or ".join(SONG_COLLECTIONS)}).')
+    did = resolve_did(actor)
+    acct = account(did)
+    try:
+        got = xrpc(acct['pds'], 'com.atproto.repo.getRecord', {'repo': did, 'collection': collection, 'rkey': rkey})
+    except Stop as err:
+        if getattr(err, 'status', None) in (400, 404):
+            raise Stop(f"There's no song at {address} (it may have been deleted).")
+        raise
+    value, cid = got.get('value'), got.get('cid')
+    if not isinstance(value, dict) or not isinstance(cid, str):
+        raise Stop(f'{address} is not a song record.')
+    blob = value.get('audioBlob')
+    if not (isinstance(blob, dict) and isinstance((blob.get('ref') or {}).get('$link'), str)):
+        raise Stop(f"{address} has no audio on its account's own server (an older plyr.fm song?), so Tracks can't play it.")
+    title = value.get('title') if isinstance(value.get('title'), str) else ''
+    return {'uri': f'at://{did}/{collection}/{rkey}', 'cid': cid, 'title': title or rkey, 'by': acct['handle'],
+            'artist': value.get('artist') if isinstance(value.get('artist'), str) else ''}
+
+
+def renderer_address(given=None, published=None):
+    """Tracks' address: the one given, else renderer-tiles' published.json beside this folder."""
+    if given:
+        return given
+    path = Path(published) if published else RENDERERS_PUBLISHED
+    try:
+        uri = (json.loads(path.read_text(encoding='utf-8')).get('track-renderer') or {}).get('uri')
+    except (OSError, ValueError):
+        uri = None
+    if not isinstance(uri, str):
+        raise Stop(f"Couldn't find Tracks' address in {path}: give it with --renderer at://.../{TILE_COLLECTION}/...")
+    return uri
+
+
 # ---------- the post ----------
 
 def check_text(text, most, most_bytes, what):
@@ -175,8 +234,10 @@ def now_iso():
     return datetime.now(timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z')
 
 
-def make_record(tile, text=None, alt=None, langs=(), created_at=None):
+def make_record(tile, text=None, alt=None, langs=(), created_at=None, record=None):
     rec = {'$type': COLLECTION, 'tile': {'uri': tile['uri'], 'cid': tile['cid']}}
+    if record:
+        rec['record'] = {'uri': record['uri'], 'cid': record['cid']}
     if text:
         check_text(text, TEXT_MAX, TEXT_MAX_BYTES, 'text')
         rec['text'] = text
@@ -208,12 +269,18 @@ def sign_in(acct, env=os.environ):
     return session['accessJwt']
 
 
-def post(args, out=print, env=os.environ):
+def post(args, out=print, env=os.environ, published=None):
     acct = account(resolve_did(args.handle))
-    tile = read_tile(args.tile)
-    record = make_record(tile, text=args.text, alt=args.alt, langs=args.lang or [])
+    song = read_song(args.song) if getattr(args, 'song', None) else None
+    tile = read_tile(renderer_address(getattr(args, 'renderer', None), published) if song else args.tile)
+    record = make_record(tile, text=args.text, alt=args.alt, langs=args.lang or [], record=song)
     out(f'Account: @{acct["handle"]} ({acct["did"]})')
-    out(f'Tile: "{tile["name"]}" by @{tile["by"]}, {tile["uri"]}')
+    if song:
+        out(f'Song: "{song["title"]}"{" by " + song["artist"] if song["artist"] else ""}, shared by @{song["by"]}, {song["uri"]}')
+        out(f'      version {song["cid"]}')
+        out(f'Played by: "{tile["name"]}" by @{tile["by"]}, {tile["uri"]}')
+    else:
+        out(f'Tile: "{tile["name"]}" by @{tile["by"]}, {tile["uri"]}')
     out(f'      version {tile["cid"]}')
     out('The record:')
     out(json.dumps(record, indent=2, ensure_ascii=False))
@@ -258,6 +325,8 @@ def show_list(args, out=print, env=os.environ):
         out(f'\n  {p.get("uri", "").rsplit("/", 1)[-1]}  {v.get("createdAt", "")}')
         out(f'    {text[:70] + ("…" if len(text) > 70 else "") if text else "(no text)"}')
         out(f'    tile: {(v.get("tile") or {}).get("uri", "?")}')
+        if isinstance(v.get('record'), dict):
+            out(f'    record: {v["record"].get("uri", "?")}')
     return posts
 
 
@@ -298,8 +367,11 @@ def parser():
     sub = p.add_subparsers(dest='command', required=True)
     def common(s):
         s.add_argument('--handle', default=DEFAULT_HANDLE, help=f'the account (a handle or DID; default {DEFAULT_HANDLE})')
-    s = sub.add_parser('post', help='write one tile post')
-    s.add_argument('--tile', required=True, help='the tile: at://<account>/ing.dasl.masl/<key>')
+    s = sub.add_parser('post', help='write one tile post (a tile, or a song played by Tracks)')
+    what = s.add_mutually_exclusive_group(required=True)
+    what.add_argument('--tile', help='the tile: at://<account>/ing.dasl.masl/<key>')
+    what.add_argument('--song', help='a song: at://<account>/cafe.thunderbird.audio.track/<key> (or fm.plyr.track)')
+    s.add_argument('--renderer', default=None, help="with --song: Tracks' address (default: renderer-tiles' published.json)")
     s.add_argument('--text', default=None, help=f'some words, at most {TEXT_MAX} characters (optional)')
     s.add_argument('--alt', default=None, help="what the tile is and does, for screen readers (optional; empty: the tile's own description)")
     s.add_argument('--lang', action='append', help='a language tag, e.g. en (repeat for up to three)')

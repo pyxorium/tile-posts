@@ -22,7 +22,15 @@ test('the lexicon: cafe.thunderbird.tile.post as the plan has it', () => {
   assert.deepEqual([p.alt.maxGraphemes, p.alt.maxLength], [1000, 10000]);
   assert.deepEqual([p.langs.maxLength, p.langs.items.format], [3, 'language']);
   assert.equal(p.createdAt.format, 'datetime');
-  assert.deepEqual(Object.keys(p).sort(), ['alt', 'createdAt', 'langs', 'text', 'tile']);
+  assert.deepEqual(Object.keys(p).sort(), ['alt', 'createdAt', 'langs', 'record', 'text', 'tile']);
+});
+
+// Song posts (claude/mixtape-3c-track-renderer-notes.md, R3c-11, PB2): an optional record beside the tile; nothing required changes.
+test('the lexicon: tile.post\'s optional record, a strongRef to the record a renderer tile shows', () => {
+  const p = readLexicons().find((x) => x.id === 'cafe.thunderbird.tile.post').defs.main.record;
+  assert.deepEqual(p.required, ['tile', 'createdAt'], 'still only tile and createdAt required');
+  assert.deepEqual(p.properties.record, { type: 'ref', ref: 'com.atproto.repo.strongRef', description: p.properties.record.description });
+  assert.match(p.properties.record.description, /cafe\.thunderbird\.audio\.track/);
 });
 
 // A heart (claude/raku-hearts-plan.md, HT2, HT3): Bluesky's like shape; the subject usually a tile post, possibly a tile.

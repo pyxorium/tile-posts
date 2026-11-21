@@ -14,10 +14,11 @@ the Web Tile Foundry (writing) both use it; neither owns it.
 
 | Field | | |
 |---|---|---|
-| `tile` | required | the tile, as a strongRef: its `ing.dasl.masl` record's address (`uri`, by DID) and exact version (`cid`), so a post shows the tile as it was when posted |
+| `tile` | required | the tile, as a strongRef: its `ing.dasl.masl` record's address (`uri`, by DID) and exact version (`cid`), so a post shows the tile as it was when posted; with `record`, the renderer tile that shows that record |
+| `record` | optional | since Nov 20 2026: the record the post is about when it isn't a tile (a song, later a place or a signpost), as a strongRef; shown by the renderer tile in `tile` |
 | `createdAt` | required | when it was posted |
 | `text` | optional | up to 300 characters; a post can be just the tile |
-| `alt` | optional | what the tile is and does, for screen readers and when only its card shows; empty means the tile's own description |
+| `alt` | optional | what the tile (or the record) is and does, for screen readers and when only its card shows; empty means the tile's own description, or a line made from the record |
 | `langs` | optional | up to three language tags |
 
 An example:
@@ -33,6 +34,21 @@ An example:
   "alt": "A small 3D maze you walk with the arrow keys.",
   "langs": ["en"],
   "createdAt": "2026-11-08T16:00:00.000Z"
+}
+```
+
+**A song post** (claude/mixtape-3c-track-renderer-notes.md, R3c-11 and PB2): `record` is the song (a
+`cafe.thunderbird.audio.track`, or an `fm.plyr.track` with its audio on its account's own server) and `tile` is
+**Tracks**, the renderer tile that plays it. Raku shows a song card and plays that song with its currently pinned
+Tracks; readers that don't know `record` show Tracks' card, which explains what it is when opened alone.
+
+```json
+{
+  "$type": "cafe.thunderbird.tile.post",
+  "tile": { "uri": "at://did:plc:6vxjigxrqizmbo56gojxico3/ing.dasl.masl/3n2sdwt2j6s2f", "cid": "bafyrei…" },
+  "record": { "uri": "at://did:plc:rqbqpaaluty5v47jwciowpik/cafe.thunderbird.audio.track/3n2cz64eheg2v", "cid": "bafyrei…" },
+  "text": "Ten minutes of No Expectations, from the Fillmore in 2002.",
+  "createdAt": "2026-11-21T16:00:00.000Z"
 }
 ```
 
@@ -85,13 +101,18 @@ after); listing and dry runs don't:
 $env:BSKY_APP_PASSWORD = Read-Host "App password"
 python scripts/tile_post.py post --tile at://pyxorium.com/ing.dasl.masl/3myyjuyr2ja2s --text "Walk the maze" --alt "A small 3D maze" --lang en --dry-run
 python scripts/tile_post.py post --tile at://pyxorium.com/ing.dasl.masl/3myyjuyr2ja2s --text "Walk the maze" --alt "A small 3D maze" --lang en
+python scripts/tile_post.py post --song at://pyxorium.com/cafe.thunderbird.audio.track/3n2cz64eheg2v --text "…" --handle pyxorium.com --dry-run
 python scripts/tile_post.py list
 python scripts/tile_post.py delete --rkey …
 ```
 
 - `post` reads the tile's record from its own server (any account's) for its exact version, checks it really is an
   `ing.dasl.masl` record and that the text fits, writes one record, reads it back, and prints its address.
-- `list` shows an account's tile posts; `delete` removes one after "Really delete it?".
+- `post --song` reads the song's record from its own server for its exact version (refusing another kind, or a plyr.fm
+  song whose audio is only on plyr.fm's storage), puts it in `record`, and puts **Tracks** in `tile`: Tracks' address
+  from `C:\thunderbird-cafe\renderer-tiles\published.json` (`track-renderer`) when that folder sits beside this one,
+  its exact version read from its own server; `--renderer at://…` names it instead.
+- `list` shows an account's tile posts (and a song post's `record`); `delete` removes one after "Really delete it?".
 - `--handle pyxorium.com` (or a DID) works on another account; the default is thunderbird.cafe.
 - Characters are counted as Python counts them, which is never fewer than a reader sees: a few emoji made of several
   parts count as more than one.

@@ -21,6 +21,8 @@ ME = 'did:plc:6vxjigxrqizmbo56gojxico3'          # thunderbird.cafe
 OTHER = 'did:plc:rqbqpaaluty5v47jwciowpik'       # pyxorium.com (the maze's account)
 PASSWORD = 'abcd-efgh-ijkl-mnop'
 TILE_CID = 'bafyreigawujq3a4qtir6mepbu3yk4owndjwkb7xd6xuwyoi53nkyknsloe'
+SONG_CID = 'bafyreisongnoexpectations'
+TRACKS_CID = 'bafyreitracksnow'
 
 
 class World:
@@ -30,6 +32,14 @@ class World:
             (OTHER, 'ing.dasl.masl', '3mzmaze'): {'cid': TILE_CID, 'value': {'$type': 'ing.dasl.masl', 'tile': {'name': 'The Escher maze'}}},
             (OTHER, 'app.bsky.feed.post', 'notatile'): {'cid': 'bafyreipost', 'value': {'$type': 'app.bsky.feed.post', 'text': 'hi'}},
             (OTHER, 'ing.dasl.masl', 'fake'): {'cid': 'bafyreifake', 'value': {'$type': 'something.else'}},
+            # songs (R3c-11): one of ours, a plyr.fm one with its audio on the account's server, an old plyr.fm one
+            (OTHER, 'cafe.thunderbird.audio.track', '3n2cz64eheg2v'): {'cid': SONG_CID, 'value': {'$type': 'cafe.thunderbird.audio.track',
+                'title': 'No Expectations', 'artist': 'Yonder Mountain String Band', 'audioBlob': {'$type': 'blob', 'ref': {'$link': 'bafkreisong'}, 'mimeType': 'video/webm', 'size': 7330000}}},
+            (OTHER, 'fm.plyr.track', '3mh6rgj3nef22'): {'cid': 'bafyreiplyrsong', 'value': {'title': 'Drop Top', 'artist': 'Parlor Greens',
+                'audioBlob': {'$type': 'blob', 'ref': {'$link': 'bafkreiplyr'}, 'mimeType': 'audio/mpeg', 'size': 4000000}}},
+            (OTHER, 'fm.plyr.track', 'old'): {'cid': 'bafyreiold', 'value': {'title': 'Old one', 'audioUrl': 'https://plyr.fm/audio/x.mp3'}},
+            # Tracks, the renderer tile, on thunderbird.cafe
+            (ME, 'ing.dasl.masl', '3n2tracks'): {'cid': TRACKS_CID, 'value': {'$type': 'ing.dasl.masl', 'tile': {'name': 'Tracks'}}},
         }
         self.calls = []
         self.next = 0
@@ -224,6 +234,57 @@ class TilePostTest(unittest.TestCase):
         self.w.keep_after_delete = True
         with self.assertRaisesRegex(tp.Stop, 'still reads back'):
             self.run_quiet(tp.delete, self.args(['delete', '--rkey', next(iter(other))[2]]), env=self.env, ask=lambda q: 'y')
+
+    # ---------- song posts (R3c-11, PB2): the song in `record`, Tracks in `tile` ----------
+
+    def published(self, uri=None):
+        import tempfile
+        f = tempfile.NamedTemporaryFile('w', suffix='.json', delete=False)
+        json.dump({'track-renderer': {'uri': uri or f'at://{ME}/ing.dasl.masl/3n2tracks', 'cid': 'bafyreiwhateverpublishedsaid'}}, f)
+        f.close()
+        return f.name
+
+    def test_a_song_post_names_the_song_in_record_and_tracks_in_tile(self):
+        uri, said = self.run_quiet(tp.post, self.args(['post', '--song', 'at://pyxorium.com/cafe.thunderbird.audio.track/3n2cz64eheg2v', '--text', 'Ten minutes of No Expectations']),
+                                   env=self.env, published=self.published())
+        rec = next(iter(self.mine().values()))['value']
+        self.assertEqual(rec['record'], {'uri': f'at://{OTHER}/cafe.thunderbird.audio.track/3n2cz64eheg2v', 'cid': SONG_CID}, 'the song by DID and exact version')
+        self.assertEqual(rec['tile'], {'uri': f'at://{ME}/ing.dasl.masl/3n2tracks', 'cid': TRACKS_CID}, "Tracks, its version read from its own server")
+        self.assertEqual(rec['text'], 'Ten minutes of No Expectations')
+        self.assertIn('Song: "No Expectations" by Yonder Mountain String Band, shared by @pyxorium.com', said)
+        self.assertIn('Played by: "Tracks"', said)
+        _, listed = self.run_quiet(tp.show_list, self.args(['list']), env={})
+        self.assertIn(f'record: at://{OTHER}/cafe.thunderbird.audio.track/3n2cz64eheg2v', listed)
+
+    def test_a_plyr_song_with_its_audio_on_the_account_and_renderer_given(self):
+        self.run_quiet(tp.post, self.args(['post', '--song', f'at://{OTHER}/fm.plyr.track/3mh6rgj3nef22', '--renderer', f'at://{ME}/ing.dasl.masl/3n2tracks']),
+                       env=self.env, published='/nowhere.json')
+        rec = next(iter(self.mine().values()))['value']
+        self.assertEqual(rec['record']['uri'], f'at://{OTHER}/fm.plyr.track/3mh6rgj3nef22')
+        self.assertEqual(sorted(rec), ['$type', 'createdAt', 'record', 'tile'])
+
+    def test_what_isnt_a_playable_song_is_refused(self):
+        cases = [
+            ('at://pyxorium.com/fm.plyr.track/old', "no audio on its account's own server"),
+            ('at://pyxorium.com/cafe.thunderbird.audio.track/missing', "There's no song"),
+            ('at://pyxorium.com/ing.dasl.masl/3mzmaze', 'not a song'),
+            ('nonsense', 'not a record address'),
+        ]
+        for address, words in cases:
+            with self.subTest(address), self.assertRaisesRegex(tp.Stop, words):
+                self.run_quiet(tp.post, self.args(['post', '--song', address, '--dry-run']), env=self.env, published=self.published())
+        with self.assertRaisesRegex(tp.Stop, "Couldn't find Tracks' address"):
+            self.run_quiet(tp.post, self.args(['post', '--song', 'at://pyxorium.com/cafe.thunderbird.audio.track/3n2cz64eheg2v', '--dry-run']), env=self.env, published='/nowhere.json')
+        with self.assertRaisesRegex(tp.Stop, 'not a tile'):
+            self.run_quiet(tp.post, self.args(['post', '--song', 'at://pyxorium.com/cafe.thunderbird.audio.track/3n2cz64eheg2v', '--dry-run']), env=self.env,
+                           published=self.published(f'at://{OTHER}/app.bsky.feed.post/notatile'))
+        self.assertEqual(self.mine(), {})
+
+    def test_tile_or_song_one_of_them(self):
+        import contextlib
+        for argv in (['post'], ['post', '--tile', 'at://x/ing.dasl.masl/y', '--song', 'at://x/fm.plyr.track/y']):
+            with self.subTest(argv), self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+                tp.parser().parse_args(argv)
 
     def test_https_only(self):
         with self.assertRaisesRegex(tp.Stop, 'https only'):
